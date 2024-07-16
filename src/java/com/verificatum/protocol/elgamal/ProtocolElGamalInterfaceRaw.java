@@ -34,6 +34,7 @@ import com.verificatum.arithm.ArithmFormatException;
 import com.verificatum.arithm.PGroup;
 import com.verificatum.arithm.PGroupElement;
 import com.verificatum.arithm.PGroupElementArray;
+import com.verificatum.arithm.PGroupElementIterator;
 import com.verificatum.arithm.PPGroup;
 import com.verificatum.arithm.PPGroupElement;
 import com.verificatum.arithm.PRing;
@@ -50,10 +51,7 @@ import com.verificatum.protocol.ProtocolFormatException;
 
 
 /**
- * Raw interface that uses the byte tree representation of Verificatum
- * itself to represent input and output. This means that lists of
- * ciphertexts are represented column by column which is convenient to
- * Verificatum, but not to end users.
+ * Raw interface of an El Gamal mix-net.
  *
  * @author Douglas Wikstrom
  */
@@ -63,7 +61,12 @@ public class ProtocolElGamalInterfaceRaw extends ProtocolElGamalInterface
     @Override
     public void writePublicKey(final PGroupElement fullPublicKey,
                                final File file) {
-        publicKeyToByteTree(fullPublicKey).unsafeWriteTo(file);
+        final PGroup pGroup =
+            ((PPGroupElement) fullPublicKey).project(0).getPGroup();
+        final ByteTreeBasic gbt = Marshalizer.marshal(pGroup);
+        final ByteTreeBasic kbt = fullPublicKey.toByteTree();
+
+        (new ByteTreeContainer(gbt, kbt)).unsafeWriteTo(file);
     }
 
     @Override
@@ -72,8 +75,25 @@ public class ProtocolElGamalInterfaceRaw extends ProtocolElGamalInterface
                                        final int certainty)
         throws ProtocolFormatException {
 
-        final ByteTreeBasic byteTree = new ByteTreeF(file);
-        return byteTreeToPublicKey(byteTree, randomSource, certainty);
+        ByteTreeReader btr = null;
+        try {
+
+            btr = new ByteTreeReaderF(file);
+            final PGroup keyPGroup =
+                Marshalizer.unmarshalAux_PGroup(btr.getNextChild(),
+                                                randomSource, certainty);
+
+            return new PPGroup(keyPGroup, 2).toElement(btr.getNextChild());
+
+        } catch (final EIOException eioe) {
+            throw new ProtocolFormatException("Malformed key!", eioe);
+        } catch (final ArithmFormatException afe) {
+            throw new ProtocolFormatException("Malformed key!", afe);
+        } finally {
+            if (btr != null) {
+                btr.close();
+            }
+        }
     }
 
     @Override
@@ -93,6 +113,17 @@ public class ProtocolElGamalInterfaceRaw extends ProtocolElGamalInterface
     public void decodePlaintexts(final PGroupElementArray plaintexts,
                                  final File file) {
         writeElementArray(plaintexts, file);
+    }
+
+    public PGroupElementArray readPlaintexts(final PGroup pGroup,
+                                             final File file)
+        throws ProtocolFormatException {
+        return readElementArray(pGroup, file);
+    }
+
+    public void writeNonce(final PRingElementArray nonce,
+                           final File file) {
+        writeElementArray(nonce, file);
     }
 
     @Override
@@ -127,6 +158,117 @@ public class ProtocolElGamalInterfaceRaw extends ProtocolElGamalInterface
 
         writeCiphertexts(ciphs, outputFile);
         ciphs.free();
+    }
+
+    @Override
+    public void demoEncrypt(final PGroupElement fullPublicKey,
+                            final String message,
+                            final int width,
+                            final File ciphsFile,
+                            final File nonceFile,
+                            final RandomSource randomSource)
+        throws ProtocolFormatException {
+
+        final PGroupElement basicPublicKey = ((PPGroupElement) fullPublicKey)
+            .project(0);
+        final PGroupElement publicKey =
+            ((PPGroupElement) fullPublicKey).project(1);
+
+        final PGroup pGroup = publicKey.getPGroup();
+        final PRing pRing = pGroup.getPRing();
+
+        //consider width = 1
+        //consider that message fits
+
+        final PGroupElement encMsg = pGroup
+            .encode(message.getBytes(), 0, message.length());
+
+        final PGroupElementArray m = pGroup.toElementArray(1, encMsg);
+
+        System.out.println("encoded message: " + encMsg.toString());
+
+        final PRingElementArray r =
+            pRing.randomElementArray(1, randomSource, 20);
+
+        final PGroupElementArray u = basicPublicKey.exp(r);
+        final PGroupElementArray t = publicKey.exp(r);
+
+        final PGroupElementArray v = t.mul(m);
+        t.free();
+        m.free();
+
+        final PGroupElementArray newCiph =
+            ((PPGroup) fullPublicKey.getPGroup()).product(u, v);
+
+        writeCiphertexts(newCiph, ciphsFile);
+        writeNonce(r, nonceFile);
+
+        newCiph.free();
+        r.free();
+    }
+
+    @Override
+    public void demoAppend(PGroupElement fullPublicKey,
+                           File ciphsFileIn,
+                           File ciphsFileOut)
+        throws ProtocolFormatException {
+
+        final PGroupElementArray newCiphs =
+                readCiphertexts(fullPublicKey.getPGroup(), ciphsFileIn);
+
+        final PGroupElementArray apndCiphs;
+        if(ciphsFileOut.exists()) {
+            final PGroupElementArray ciphs =
+                readCiphertexts(fullPublicKey.getPGroup(), ciphsFileOut);
+            apndCiphs = ((PPGroup) fullPublicKey.getPGroup())
+                .toElementArray(ciphs, newCiphs);
+            ciphs.free();
+        }
+        else {
+            apndCiphs = ((PPGroup) fullPublicKey.getPGroup())
+                .toElementArray(newCiphs);
+        }
+        newCiphs.free();
+
+        writeCiphertexts(apndCiphs, ciphsFileOut);
+
+        apndCiphs.free();
+    }
+
+    @Override
+    public void demoDecode(final PGroupElement fullPublicKey,
+                           final File messagesFile,
+                           final File decodedFile)
+        throws ProtocolFormatException {
+
+        final PGroup pGroup = ((PPGroupElement) fullPublicKey).project(1)
+            .getPGroup();
+
+        final PGroupElementArray encMsgs =
+            readPlaintexts(pGroup, messagesFile);
+
+        PGroupElementIterator it = encMsgs.getIterator();
+        String messages = "";
+        byte[] buffer = new byte[pGroup.getEncodeLength()];
+        while(it.hasNext()) {
+            final PGroupElement msg = it.next();
+            msg.decode(buffer, 0);
+            messages += new String(buffer) + "\n";
+        }
+
+        //TODO: write to file
+        System.out.println(messages);
+    }
+
+    /**
+     * Writes the input array of group elements to file.
+     *
+     * @param array Nonce to be written.
+     * @param file Destination file.
+     */
+    public void writeElementArray(final PRingElementArray array,
+                                  final File file) {
+        array.toByteTree().unsafeWriteTo(file);
     }
 
     /**
@@ -399,5 +541,32 @@ public class ProtocolElGamalInterfaceRaw extends ProtocolElGamalInterface
             final File outputFile = new File(outputFilenames[i]);
             writeElementArray(arrays.get(i), outputFile);
         }
+    }
+
+        @Override
+    public void demoEncrypt(final PGroupElement fullPublicKey,
+                            final String message,
+                            final int width,
+                            final File ciphFile,
+                            final File nonceFile,
+                            final RandomSource randomSource)
+        throws ProtocolFormatException {
+        System.out.println("Encryption only available in raw interface");
+    }
+
+    @Override
+    public void demoAppend(final PGroupElement fullPublicKey,
+                           final File ciphsFileIn,
+                           final File ciphsFileOut)
+        throws ProtocolFormatException {
+        System.out.println("Appending only available in raw interface");
+    }
+
+    @Override
+    public void demoDecode(final PGroupElement fullPublicKey,
+                           final File messagesFile,
+                           final File decodedFile)
+        throws ProtocolFormatException {
+        System.out.println("Decoding only available in raw interface");
     }
 }

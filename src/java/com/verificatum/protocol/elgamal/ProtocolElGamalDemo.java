@@ -81,6 +81,9 @@ public final class ProtocolElGamalDemo {
 
         opt.addOption("-pkey", "", "Generate a demo public key.");
         opt.addOption("-ciphs", "", "Generate demo ciphertexts.");
+        opt.addOption("-enc", "", "Encrypt a single ciphertext.");
+        opt.addOption("-apnd", "", "Append two ciphertext files.");
+        opt.addOption("-dec", "", "Decode a list of plaintests.");
 
         opt.addParameter("group",
                          "Group over which the protocol is executed. An "
@@ -90,6 +93,13 @@ public final class ProtocolElGamalDemo {
         opt.addParameter("noCiphs", "Number of ciphertexts generated.");
         opt.addParameter("ciphertexts",
                          "Destination of generated ciphertexts.");
+        opt.addParameter("nonce",
+                         "Destination of nonce for future verification.");
+        opt.addParameter("plaintext", "Plaintext message.");
+        opt.addParameter("ciphertextin",
+                         "Source of a new ciphertexts to be appended.");
+        opt.addParameter("messages", "Source of decrypted messages.");
+        opt.addParameter("decoded", "Destination of decoded messages.");
 
         opt.addOption("-h", "", "Print usage information.");
         opt.addOption("-e", "", "Print stack trace for exceptions.");
@@ -128,7 +138,18 @@ public final class ProtocolElGamalDemo {
                               + "publicKey,noCiphs,ciphertexts#");
 
         opt.addUsageForm();
-        opt.appendToUsageForm(3, "-version###");
+        opt.appendToUsageForm(3, "-enc#-e,-cerr,-i,-width#"
+                              + "publicKey,plaintext,ciphertexts,nonce#");
+
+        opt.addUsageForm();
+        opt.appendToUsageForm(4, "-apnd#-e,-cerr,-i#"
+                              + "publicKey,ciphertexts,ciphertextin#");
+
+        opt.addUsageForm();
+        opt.appendToUsageForm(5, "-dec##publicKey,messages,decoded#");
+
+        opt.addUsageForm();
+        opt.appendToUsageForm(6, "-version###");
 
         final String s = "Generates demo ciphertexts for the given interface.";
 
@@ -346,7 +367,7 @@ public final class ProtocolElGamalDemo {
 
                 protInterface.writePublicKey(fullPublicKey, publicKeyFile);
 
-            } else {
+            } else if (opt.valueIsGiven("-ciphs")) {
 
                 fullPublicKey = readPublicKey(protInterface,
                                               publicKeyFile,
@@ -379,6 +400,109 @@ public final class ProtocolElGamalDemo {
                                                   noCiphs,
                                                   ciphertexts,
                                                   randomSource);
+
+            } else if (opt.valueIsGiven("-enc")) {
+
+                fullPublicKey = readPublicKey(protInterface,
+                                              publicKeyFile,
+                                              randomSource,
+                                              certainty);
+
+                // Expand public key with respect to the width.
+                final int width = getWidth("-width", opt);
+                final PGroupElement widePublicKey =
+                    ProtocolElGamal.getWidePublicKey(fullPublicKey, width);
+
+                // Plaintext message.
+                final String plaintext = opt.getStringValue("plaintext");
+
+                // Destination of the ciphertexts.
+                final File ciphertexts =
+                    new File(opt.getStringValue("ciphertexts"));
+
+                // Destination of the nonce.
+                final File nonce =
+                    new File(opt.getStringValue("nonce"));
+
+                // Initialize demo working directory.
+                try {
+                    TempFile.init(opt.getStringValue("-wd", ""), randomSource);
+                } catch (EIOException eioe) {
+                    throw new ProtocolFormatException(eioe.getMessage(), eioe);
+                }
+
+                // Generate encrypted plaintext and append it to file.
+                protInterfaceDemo.demoEncrypt(widePublicKey,
+                                              plaintext,
+                                              width,
+                                              ciphertexts,
+                                              nonce,
+                                              randomSource);
+
+            } else if (opt.valueIsGiven("-apnd")) {
+
+                fullPublicKey = readPublicKey(protInterface,
+                                              publicKeyFile,
+                                              randomSource,
+                                              certainty);
+
+                // Expand public key with respect to the width.
+                final int width = getWidth("-width", opt);
+                final PGroupElement widePublicKey =
+                    ProtocolElGamal.getWidePublicKey(fullPublicKey, width);
+
+                // Source of new ciphertexts.
+                final File ciphertextin =
+                    new File(opt.getStringValue("ciphertextin"));
+
+                // Destination of the appended ciphertexts.
+                final File ciphertexts =
+                    new File(opt.getStringValue("ciphertexts"));
+
+                // Initialize demo working directory.
+                try {
+                    TempFile.init(opt.getStringValue("-wd", ""), randomSource);
+                } catch (EIOException eioe) {
+                    throw new ProtocolFormatException(eioe.getMessage(), eioe);
+                }
+
+                // Generate encrypted plaintext and append it to file.
+                protInterfaceDemo.demoAppend(widePublicKey,
+                                              ciphertextin,
+                                              ciphertexts);
+
+            } else if (opt.valueIsGiven("-dec")) {
+
+                fullPublicKey = readPublicKey(protInterface,
+                                              publicKeyFile,
+                                              randomSource,
+                                              certainty);
+
+                // Expand public key with respect to the width.
+                final int width = getWidth("-width", opt);
+                final PGroupElement widePublicKey =
+                    ProtocolElGamal.getWidePublicKey(fullPublicKey, width);
+
+                // Source of the decrypted messages.
+                final File messagesFile =
+                    new File(opt.getStringValue("messages"));
+
+                // Destination of the decoded messages.
+                final File decodedFile =
+                    new File(opt.getStringValue("decoded"));
+
+                // Initialize demo working directory.
+                try {
+                    TempFile.init(opt.getStringValue("-wd", ""), randomSource);
+                } catch (EIOException eioe) {
+                    throw new ProtocolFormatException(eioe.getMessage(), eioe);
+                }
+
+                protInterfaceDemo.demoDecode(widePublicKey,
+                                             messagesFile,
+                                             decodedFile);
+            } else {
+                //NOP
             }
         // PMD does not understand this.
         } catch (final ProtocolFormatException pfe) { // NOPMD

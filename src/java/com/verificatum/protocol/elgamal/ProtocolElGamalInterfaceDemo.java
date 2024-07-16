@@ -30,6 +30,7 @@ import java.io.File;
 
 import com.verificatum.arithm.PGroupElement;
 import com.verificatum.crypto.RandomSource;
+import com.verificatum.protocol.ProtocolFormatException;
 
 
 /**
@@ -52,4 +53,50 @@ public interface ProtocolElGamalInterfaceDemo {
                          int noCiphs,
                          File outputFile,
                          RandomSource randomSource);
+
+    /**
+     * Encrypt a given plaintext message.
+     *
+     * @param fullPublicKey Full public key.
+     * @param message Plaintext message.
+     * @param width Ciphertext width.
+     * @param ciphFile Destination of the ciphertext.
+     * @param nonceFile Destination of the used nonce.
+     * @param randomSource Source of randomness.
+     * @throws ProtocolFormatException If the ciphertext file
+     * can not be parsed.
+     */
+    void demoEncrypt(PGroupElement fullPublicKey,
+                     String message,
+                     int width,
+                     File ciphFile,
+                     File nonceFile,
+                     RandomSource randomSource)
+        throws ProtocolFormatException;
+
+    /**
+     * Appends two ciphertext files together.
+     *
+     * @param fullPublicKey Full public key.
+     * @param ciphsFileIn Source of new ciphertexts to be appended.
+     * @param ciphsFileOut Destination of the appended ciphertexts.
+     * @throws ProtocolFormatException If the ciphertext files
+     * can not be parsed.
+     */
+    void demoAppend(PGroupElement fullPublicKey,
+                    File ciphsFileIn,
+                    File ciphsFileOut)
+        throws ProtocolFormatException;
+
+    /**
+     * Decodes a list of decrypted messages.
+     * 
+     * @param fullPublicKey Full public key.
+     * @param messagesFile Source of the decrypted messages.
+     * @param decodedFile Destination of the decoded messages.
+     */
+    void demoDecode(PGroupElement fullPublicKey,
+                    File messagesFile,
+                    File decodedFile)
+        throws ProtocolFormatException;
 }

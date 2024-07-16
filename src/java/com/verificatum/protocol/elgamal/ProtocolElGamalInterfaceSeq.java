@@ -411,4 +411,31 @@ public abstract class ProtocolElGamalInterfaceSeq
 
         ciphs.free();
     }
+
+        @Override
+    public void demoEncrypt(final PGroupElement fullPublicKey,
+                            final String message,
+                            final int width,
+                            final File ciphFile,
+                            final File nonceFile,
+                            final RandomSource randomSource)
+        throws ProtocolFormatException {
+        System.out.println("Encryption only available in raw interface");
+    }
+
+    @Override
+    public void demoAppend(final PGroupElement fullPublicKey,
+                           final File ciphsFileIn,
+                           final File ciphsFileOut)
+        throws ProtocolFormatException {
+        System.out.println("Appending only available in raw interface");
+    }
+
+    @Override
+    public void demoDecode(final PGroupElement fullPublicKey,
+                           final File messagesFile,
+                           final File decodedFile)
+        throws ProtocolFormatException {
+        System.out.println("Decoding only available in raw interface");
+    }
 }
